@@ -1063,6 +1063,36 @@ int stk_sample(int argc, char *argv[])
 	return 0;
 }
 
+/* exclude */
+
+int stk_exclude(int argc, char *argv[])
+{
+        khash_t(reg) *h = kh_init(reg);
+        gzFile fp;
+        kseq_t *seq;
+        khint_t k;
+
+        //if (argc == optind && isatty(fileno(stdin))) {
+        if (optind + 2 > argc) {
+                fprintf(stderr, "\n");
+                fprintf(stderr, "Usage:   seqtk exclude <in.fa> <in.bed>|<name.list>\n\n");
+                return 1;
+        }
+        h = stk_reg_read(argv[optind+1]);
+
+        fp = optind < argc && strcmp(argv[optind], "-")? gzopen(argv[optind], "r") : gzdopen(fileno(stdin), "r");
+        seq = kseq_init(fp);
+        while (kseq_read(seq) >= 0) {
+                k = kh_get(reg, h, seq->name.s);
+                if (k != kh_end(h)) continue;
+                stk_printseq(seq, UINT_MAX);
+        }
+        kseq_destroy(seq);
+        gzclose(fp);
+        stk_reg_destroy(h);
+        return 0;
+}
+
 /* seq */
 
 void stk_mask(kseq_t *seq, const khash_t(reg) *h, int is_complement, int mask_chr)
@@ -1560,6 +1590,7 @@ static int usage()
 	fprintf(stderr, "         comp      get the nucleotide composition of FASTA/Q\n");
 	fprintf(stderr, "         sample    subsample sequences\n");
 	fprintf(stderr, "         subseq    extract subsequences from FASTA/Q\n");
+	fprintf(stderr, "         exclude   exclude subsequences from FASTA/Q\n");
 	fprintf(stderr, "         fqchk     fastq QC (base/quality summary)\n");
 	fprintf(stderr, "         mergepe   interleave two PE FASTA/Q files\n");
 	fprintf(stderr, "         trimfq    trim FASTQ using the Phred algorithm\n\n");
@@ -1598,6 +1629,7 @@ int main(int argc, char *argv[])
 	else if (strcmp(argv[1], "seq") == 0) stk_seq(argc-1, argv+1);
 	else if (strcmp(argv[1], "kfreq") == 0) stk_kfreq(argc-1, argv+1);
 	else if (strcmp(argv[1], "rename") == 0) stk_rename(argc-1, argv+1);
+	else if (strcmp(argv[1], "exclude") == 0) stk_exclude(argc-1, argv+1);
 	else {
 		fprintf(stderr, "[main] unrecognized command '%s'. Abort!\n", argv[1]);
 		return 1;
