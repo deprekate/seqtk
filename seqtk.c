@@ -566,7 +566,7 @@ int stk_subseq(int argc, char *argv[])
 						if (beg) printf(":%d", beg+1);
 					} else printf(":%d-%d", beg+1, end);
 				}
-				if (seq->comment.l) printf("\t%s", seq->comment.s);
+				if (seq->comment.l) printf(" %s", seq->comment.s);
 			} else printf("%s\t%d\t", seq->name.s, beg + 1);
 			if (end > seq->seq.l) end = seq->seq.l;
 			for (j = 0; j < end - beg; ++j) {
@@ -1063,6 +1063,38 @@ int stk_sample(int argc, char *argv[])
 	return 0;
 }
 
+/* exclude */
+
+int stk_exclude(int argc, char *argv[])
+{
+	khash_t(reg) *h = kh_init(reg);
+        gzFile fp;
+        kseq_t *seq;
+	khint_t k;
+
+	//if (argc == optind && isatty(fileno(stdin))) {
+	if (optind + 2 > argc) {
+                fprintf(stderr, "\n");
+		fprintf(stderr, "Usage:   seqtk exclude <in.fa> <in.bed>|<name.list>\n\n");
+		return 1;
+
+	}
+	h = stk_reg_read(argv[optind+1]);
+
+	fp = optind < argc && strcmp(argv[optind], "-")? gzopen(argv[optind], "r") : gzdopen(fileno(stdin), "r");
+        seq = kseq_init(fp);
+        while (kseq_read(seq) >= 0) {
+		k = kh_get(reg, h, seq->name.s);
+		if (k != kh_end(h)) continue;
+        	stk_printseq(seq, UINT_MAX);
+        }
+        kseq_destroy(seq);
+        gzclose(fp);
+        stk_reg_destroy(h);
+        return 0;
+
+}
+
 /* seq */
 
 void stk_mask(kseq_t *seq, const khash_t(reg) *h, int is_complement, int mask_chr)
@@ -1227,63 +1259,6 @@ int stk_seq(int argc, char *argv[])
 	gzclose(fp);
 	stk_reg_destroy(h);
 	free(kr);
-	return 0;
-}
-
-int stk_gc(int argc, char *argv[])
-{
-	int c, is_at = 0, min_l = 20;
-	double frac = 0.6f, xdropoff = 10.0f, q;
-	gzFile fp;
-	kseq_t *seq;
-
-	while ((c = getopt(argc, argv, "wx:f:l:")) >= 0) {
-		if (c == 'x') xdropoff = atof(optarg);
-		else if (c == 'w') is_at = 1;
-		else if (c == 'f') frac = atof(optarg);
-		else if (c == 'l') min_l = atoi(optarg);
-	}
-	if (optind + 1 > argc) {
-		fprintf(stderr, "Usage: seqtk gc [options] <in.fa>\n");
-		fprintf(stderr, "Options:\n");
-		fprintf(stderr, "  -w         identify high-AT regions\n");
-		fprintf(stderr, "  -f FLOAT   min GC fraction (or AT fraction for -w) [%.2f]\n", frac);
-		fprintf(stderr, "  -l INT     min region length to output [%d]\n", min_l);
-		fprintf(stderr, "  -x FLOAT   X-dropoff [%.1f]\n", xdropoff);
-		return 1;
-	}
-	q = (1.0f - frac) / frac;
-
-	fp = strcmp(argv[optind], "-")? gzopen(argv[optind], "r") : gzdopen(fileno(stdin), "r");
-	seq = kseq_init(fp);
-	while (kseq_read(seq) >= 0) {
-		int i, start = 0, max_i = 0, n_hits = 0, start_hits = 0, max_hits = 0;
-		double sc = 0., max = 0.;
-		for (i = 0; i < seq->seq.l; ++i) {
-			int hit;
-			c = seq_nt16_table[(int)seq->seq.s[i]];
-			if (is_at) hit = (c == 1 || c == 8 || c == 9);
-			else hit = (c == 2 || c == 4 || c == 6);
-			n_hits += hit;
-			if (hit) {
-				if (sc == 0) start = i, start_hits = n_hits;
-				sc += q;
-				if (sc > max) max = sc, max_i = i, max_hits = n_hits;
-			} else if (sc > 0) {
-				sc += -1.0f;
-				if (sc < 0 || max - sc > xdropoff) {
-					if (max_i + 1 - start >= min_l)
-						printf("%s\t%d\t%d\t%d\n", seq->name.s, start, max_i + 1, max_hits - start_hits + 1);
-					sc = max = 0;
-					i = max_i;
-				}
-			}
-		}
-		if (max > 0. && max_i + 1 - start >= min_l)
-			printf("%s\t%d\t%d\t%d\n", seq->name.s, start, max_i + 1, max_hits - start_hits + 1);
-	}
-	kseq_destroy(seq);
-	gzclose(fp);
 	return 0;
 }
 
@@ -1555,16 +1530,16 @@ static int usage()
 {
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Usage:   seqtk <command> <arguments>\n");
-	fprintf(stderr, "Version: 1.0-r82-dirty\n\n");
+	fprintf(stderr, "Version: 1.0-r77-dirty\n\n");
 	fprintf(stderr, "Command: seq       common transformation of FASTA/Q\n");
 	fprintf(stderr, "         comp      get the nucleotide composition of FASTA/Q\n");
 	fprintf(stderr, "         sample    subsample sequences\n");
 	fprintf(stderr, "         subseq    extract subsequences from FASTA/Q\n");
+	fprintf(stderr, "         exclude   exclude subsequences from FASTA/Q\n");
 	fprintf(stderr, "         fqchk     fastq QC (base/quality summary)\n");
 	fprintf(stderr, "         mergepe   interleave two PE FASTA/Q files\n");
 	fprintf(stderr, "         trimfq    trim FASTQ using the Phred algorithm\n\n");
 	fprintf(stderr, "         hety      regional heterozygosity\n");
-	fprintf(stderr, "         gc        identify high- or low-GC regions\n");
 	fprintf(stderr, "         mutfa     point mutate FASTA at specified positions\n");
 	fprintf(stderr, "         mergefa   merge two FASTA/Q files\n");
 	fprintf(stderr, "         dropse    drop unpaired from interleaved PE FASTA/Q\n");
@@ -1582,7 +1557,6 @@ int main(int argc, char *argv[])
 	if (strcmp(argv[1], "comp") == 0) stk_comp(argc-1, argv+1);
 	else if (strcmp(argv[1], "fqchk") == 0) stk_fqchk(argc-1, argv+1);
 	else if (strcmp(argv[1], "hety") == 0) stk_hety(argc-1, argv+1);
-	else if (strcmp(argv[1], "gc") == 0) stk_gc(argc-1, argv+1);
 	else if (strcmp(argv[1], "subseq") == 0) stk_subseq(argc-1, argv+1);
 	else if (strcmp(argv[1], "mutfa") == 0) stk_mutfa(argc-1, argv+1);
 	else if (strcmp(argv[1], "mergefa") == 0) stk_mergefa(argc-1, argv+1);
@@ -1598,6 +1572,7 @@ int main(int argc, char *argv[])
 	else if (strcmp(argv[1], "seq") == 0) stk_seq(argc-1, argv+1);
 	else if (strcmp(argv[1], "kfreq") == 0) stk_kfreq(argc-1, argv+1);
 	else if (strcmp(argv[1], "rename") == 0) stk_rename(argc-1, argv+1);
+	else if (strcmp(argv[1], "exclude") == 0) stk_exclude(argc-1, argv+1);
 	else {
 		fprintf(stderr, "[main] unrecognized command '%s'. Abort!\n", argv[1]);
 		return 1;

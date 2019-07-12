@@ -37,6 +37,10 @@ Seqtk Examples
 
         seqtk subseq in.fa reg.bed > out.fa
 
+* Exclude sequences with names in file `name.lst`, one sequence name per line:
+
+        seqtk exclude in.fq name.lst > out.fq
+
 * Mask regions in `reg.bed` to lowercases:
 
         seqtk seq -M reg.bed in.fa > out.fa
